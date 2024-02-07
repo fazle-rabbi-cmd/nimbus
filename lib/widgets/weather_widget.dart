@@ -48,6 +48,8 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   double chanceOfRain = 0.0;
   String sunriseTime = '';
   String sunsetTime = '';
+  double minTemperature = 0.0;
+  double maxTemperature = 0.0;
 
   List<Map<String, dynamic>> hourlyForecast = [];
   List<Map<String, dynamic>> weeklyForecast = [];
@@ -149,7 +151,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
     );
   }
 
-  Future<void> _getWeatherForLocation(String cityName) async {
+  void _getWeatherForLocation(String cityName) async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl?q=$cityName&appid=$apiKey'),
@@ -173,8 +175,14 @@ class _WeatherWidgetState extends State<WeatherWidget> {
           sunsetTime = _formatTime(weatherData['sys']['sunset']);
           aqi = _parseAQI(weatherData);
 
+          // Get highest and lowest temperature of the day
+          double tempMin = weatherData['main']['temp_min'] - 273.15;
+          double tempMax = weatherData['main']['temp_max'] - 273.15;
+          minTemperature = tempMin;
+          maxTemperature = tempMax;
+
           // Clear the input field after successfully fetching weather data
-          _locationController.clear(); // Add this line
+          _locationController.clear();
         });
       }
     } catch (e) {
@@ -183,10 +191,11 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   }
 
   double _parseAQI(Map<String, dynamic> weatherData) {
-    if (weatherData.containsKey('aqi')) {
-      dynamic aqiData = weatherData['aqi'];
-      if (aqiData is Map<String, dynamic> && aqiData.containsKey('value')) {
-        return aqiData['value'].toDouble();
+    if (weatherData.containsKey('main') &&
+        weatherData['main'].containsKey('aqi')) {
+      dynamic aqiData = weatherData['main']['aqi'];
+      if (aqiData is double) {
+        return aqiData;
       }
     }
     return 0.0; // Default value if AQI data is not available
@@ -259,7 +268,13 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   .toDouble();
           sunriseTime = _formatTime(weatherData['sys']['sunrise']);
           sunsetTime = _formatTime(weatherData['sys']['sunset']);
-          aqi = 0.0; // Fetch AQI data and assign it here
+          aqi = 0.0;
+
+          // Get highest and lowest temperature of the day
+          double tempMin = weatherData['main']['temp_min'] - 273.15;
+          double tempMax = weatherData['main']['temp_max'] - 273.15;
+          minTemperature = tempMin;
+          maxTemperature = tempMax;
         });
       }
     } catch (e) {
@@ -479,7 +494,24 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   '${chanceOfRain.toString()}%', Icons.beach_access),
               _buildWeatherInfoRow('Sunrise', sunriseTime, Icons.wb_sunny),
               _buildWeatherInfoRow('Sunset', sunsetTime, Icons.brightness_3),
-              SizedBox(height: 20),
+              SizedBox(height: 30),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.arrow_downward, color: Colors.white),
+                  Text(
+                    '${minTemperature.toStringAsFixed(1)}°C',
+                    style: TextStyle(fontSize: 20, color: Colors.white),
+                  ),
+                  SizedBox(width: 20),
+                  Icon(Icons.arrow_upward, color: Colors.white),
+                  Text(
+                    '${maxTemperature.toStringAsFixed(1)}°C',
+                    style: TextStyle(fontSize: 20, color: Colors.white),
+                  ),
+                ],
+              ),
+              SizedBox(height: 40),
               Text(
                 'Hourly Forecast',
                 style: TextStyle(
