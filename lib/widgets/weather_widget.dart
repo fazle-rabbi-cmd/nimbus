@@ -41,6 +41,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   bool isCelsius = true;
   TextEditingController _locationController = TextEditingController();
 
+  double aqi = 0.0; // Add AQI variable
   double humidity = 0.0;
   double realFeel = 0.0;
   double pressure = 0.0;
@@ -50,6 +51,8 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
   List<Map<String, dynamic>> hourlyForecast = [];
   List<Map<String, dynamic>> weeklyForecast = [];
+
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -68,6 +71,65 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             decoration: InputDecoration(labelText: 'Location'),
           ),
           actions: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close the dialog
+                  },
+                  child: Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    String location = _locationController.text;
+                    if (location.isNotEmpty) {
+                      _getWeatherForLocation(location);
+                    }
+                    Navigator.of(context).pop(); // Close the dialog
+                  },
+                  child: Text('Search'),
+                ),
+              ],
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _getLocationAndWeather(); // Set current location
+                Navigator.of(context).pop(); // Close the dialog
+              },
+              child: Row(
+                children: [
+                  Icon(Icons.my_location),
+                  SizedBox(width: 8),
+                  Text(
+                      'Set current location'), // Include tooltip text in button label
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    ).then((value) {
+      // Automatically hide the search tab after selecting the current location
+      if (location == 'Loading...') {
+        Navigator.of(context).pop(); // Close the WeatherWidget
+      }
+    });
+  }
+
+  void _showLocationSuggestions() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Select Location'),
+          content: TextField(
+            onChanged: (value) {
+              // Implement your logic to fetch location suggestions based on input
+            },
+            decoration: InputDecoration(labelText: 'Location'),
+          ),
+          actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close the dialog
@@ -76,10 +138,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             ),
             ElevatedButton(
               onPressed: () {
-                String location = _locationController.text;
-                if (location.isNotEmpty) {
-                  _getWeatherForLocation(location);
-                }
+                // Implement your logic to select the location and fetch weather data
                 Navigator.of(context).pop(); // Close the dialog
               },
               child: Text('Search'),
@@ -112,6 +171,10 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   .toDouble();
           sunriseTime = _formatTime(weatherData['sys']['sunrise']);
           sunsetTime = _formatTime(weatherData['sys']['sunset']);
+          aqi = _parseAQI(weatherData);
+
+          // Clear the input field after successfully fetching weather data
+          _locationController.clear(); // Add this line
         });
       }
     } catch (e) {
@@ -119,17 +182,58 @@ class _WeatherWidgetState extends State<WeatherWidget> {
     }
   }
 
+  double _parseAQI(Map<String, dynamic> weatherData) {
+    if (weatherData.containsKey('aqi')) {
+      dynamic aqiData = weatherData['aqi'];
+      if (aqiData is Map<String, dynamic> && aqiData.containsKey('value')) {
+        return aqiData['value'].toDouble();
+      }
+    }
+    return 0.0; // Default value if AQI data is not available
+  }
+
   Future<void> _getLocationAndWeather() async {
     try {
+      bool serviceEnabled;
+      LocationPermission permission;
+
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        // Location services are not enabled, show a dialog to enable location services
+        // Implement your logic to show a dialog or request the user to enable location services
+        return;
+      }
+
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.deniedForever) {
+        // Location permissions are permanently denied, take the user to app settings
+        // Implement your logic to navigate the user to app settings
+        return;
+      }
+
+      if (permission == LocationPermission.denied) {
+        // Location permissions are denied, ask for permissions
+        permission = await Geolocator.requestPermission();
+        if (permission != LocationPermission.whileInUse &&
+            permission != LocationPermission.always) {
+          // Permissions are denied, show a message to the user or handle as needed
+          // Implement your logic to inform the user about the necessity of location permissions
+          return;
+        }
+      }
+
+      // Fetch current location
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.low,
       );
 
+      // Fetch weather using the obtained location
       await _getWeather(position.latitude, position.longitude);
       await _getHourlyForecast(position.latitude, position.longitude);
       await _getWeeklyForecast(position.latitude, position.longitude);
     } catch (e) {
       print('Error fetching location/weather: $e');
+      // Handle errors here, such as displaying an error message to the user
     }
   }
 
@@ -155,6 +259,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   .toDouble();
           sunriseTime = _formatTime(weatherData['sys']['sunrise']);
           sunsetTime = _formatTime(weatherData['sys']['sunset']);
+          aqi = 0.0; // Fetch AQI data and assign it here
         });
       }
     } catch (e) {
@@ -164,9 +269,10 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
   Future<void> _getHourlyForecast(double lat, double lon) async {
     try {
-      final response = await http.get(
-        Uri.parse('$forecastUrl?lat=$lat&lon=$lon&appid=$apiKey'),
-      );
+      // Hourly forecast URL
+      String hourlyForecastUrl =
+          '$forecastUrl?lat=$lat&lon=$lon&exclude=current,minutely,daily,alerts&appid=$apiKey';
+      final response = await http.get(Uri.parse(hourlyForecastUrl));
 
       if (response.statusCode == 200) {
         final forecastData = json.decode(response.body);
@@ -184,9 +290,10 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
   Future<void> _getWeeklyForecast(double lat, double lon) async {
     try {
-      final response = await http.get(
-        Uri.parse('$forecastUrl?lat=$lat&lon=$lon&appid=$apiKey'),
-      );
+      // Weekly forecast URL
+      String weeklyForecastUrl =
+          '$forecastUrl?lat=$lat&lon=$lon&exclude=current,minutely,hourly,alerts&appid=$apiKey';
+      final response = await http.get(Uri.parse(weeklyForecastUrl));
 
       if (response.statusCode == 200) {
         final forecastData = json.decode(response.body);
@@ -255,12 +362,13 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
-        title: Text('NIMBUS'),
+        title: Text('NIMBUS', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             onPressed: () {
-              ThemeManager.of(context).toggleTheme();
+              ThemeManager.of(_scaffoldKey.currentContext!).toggleTheme();
             },
             icon: Icon(Icons.lightbulb_outline),
           ),
@@ -271,6 +379,40 @@ class _WeatherWidgetState extends State<WeatherWidget> {
           IconButton(
             onPressed: _showCropSuggestion,
             icon: Icon(Icons.agriculture),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              // Handle menu item selection
+              switch (value) {
+                case 'Theme Change':
+                  ThemeManager.of(_scaffoldKey.currentContext!).toggleTheme();
+                  break;
+                case 'Crop Suggestions':
+                  _showCropSuggestion();
+                  break;
+                case 'Location':
+                  _showLocationPicker();
+                  break;
+                // Add more menu items as needed
+              }
+            },
+            itemBuilder: (BuildContext context) {
+              return [
+                PopupMenuItem<String>(
+                  value: 'Theme Change',
+                  child: Text('Theme Change'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'Crop Suggestions',
+                  child: Text('Crop Suggestions'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'Location',
+                  child: Text('Location'),
+                ),
+                // Add more menu items as needed
+              ];
+            },
           ),
         ],
       ),
@@ -286,104 +428,134 @@ class _WeatherWidgetState extends State<WeatherWidget> {
           ),
         ),
         child: SingleChildScrollView(
-          child: Container(
-            padding: EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(height: 20),
-                Icon(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: 20),
+              AnimatedSwitcher(
+                duration: Duration(milliseconds: 500),
+                child: Icon(
                   weatherIcon,
+                  key: ValueKey<int>(weatherIcon.codePoint),
                   size: 100,
                   color: Colors.white,
                 ),
-                SizedBox(height: 60),
-                Text(
-                  location,
-                  style: TextStyle(fontSize: 24, color: Colors.white),
+              ),
+              SizedBox(height: 50),
+              Text(
+                location,
+                style: TextStyle(
+                    fontSize: 24,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              GestureDetector(
+                onTap: _toggleTemperatureUnit,
+                child: Text(
+                  '${isCelsius ? temperature.toStringAsFixed(1) : (temperature * 9 / 5 + 32).toStringAsFixed(1)}°${isCelsius ? 'C' : 'F'}',
+                  style: TextStyle(
+                      fontSize: 36,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: 10),
-                GestureDetector(
-                  onTap: _toggleTemperatureUnit,
-                  child: Text(
-                    '${isCelsius ? temperature.toStringAsFixed(1) : (temperature * 9 / 5 + 32).toStringAsFixed(1)}°${isCelsius ? 'C' : 'F'}',
-                    style: TextStyle(fontSize: 36, color: Colors.white),
-                  ),
-                ),
-                SizedBox(height: 20),
-                Text(
-                  description,
-                  style: TextStyle(fontSize: 20, color: Colors.white),
-                ),
-                SizedBox(height: 20),
-                _buildWeatherInfoRow('Humidity', '${humidity.toString()}%'),
-                _buildWeatherInfoRow(
-                    'Real Feel', '${realFeel.toStringAsFixed(1)}°'),
-                _buildWeatherInfoRow('Pressure', '${pressure.toString()} hPa'),
-                _buildWeatherInfoRow(
-                    'Chance of Rain', '${chanceOfRain.toString()}%'),
-                _buildWeatherInfoRow('Sunrise', sunriseTime),
-                _buildWeatherInfoRow('Sunset', sunsetTime),
-                SizedBox(height: 20),
-                Text(
-                  'Hourly Forecast',
-                  style: TextStyle(fontSize: 24, color: Colors.white),
-                ),
-                SizedBox(height: 10),
-                _buildHourlyForecast(), // Display dynamic hourly forecast
-                SizedBox(height: 20),
-                Text(
-                  'Weekly Forecast',
-                  style: TextStyle(fontSize: 24, color: Colors.white),
-                ),
-                SizedBox(height: 10),
-                _buildWeeklyForecast(), // Display dynamic weekly forecast
-              ],
-            ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                description,
+                style: TextStyle(fontSize: 20, color: Colors.white),
+              ),
+              SizedBox(height: 20),
+              _buildWeatherInfoRow(
+                  'AQI', '${aqi.toStringAsFixed(1)}', Icons.air),
+              _buildWeatherInfoRow(
+                  'Humidity', '${humidity.toString()}%', Icons.water_drop),
+              _buildWeatherInfoRow('Real Feel',
+                  '${realFeel.toStringAsFixed(1)}°', Icons.thermostat),
+              _buildWeatherInfoRow(
+                  'Pressure', '${pressure.toString()} hPa', Icons.compress),
+              _buildWeatherInfoRow('Chance of Rain',
+                  '${chanceOfRain.toString()}%', Icons.beach_access),
+              _buildWeatherInfoRow('Sunrise', sunriseTime, Icons.wb_sunny),
+              _buildWeatherInfoRow('Sunset', sunsetTime, Icons.brightness_3),
+              SizedBox(height: 20),
+              Text(
+                'Hourly Forecast',
+                style: TextStyle(
+                    fontSize: 24,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              _buildHourlyForecast(),
+              SizedBox(height: 20),
+              Text(
+                'Weekly Forecast',
+                style: TextStyle(
+                    fontSize: 24,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              _buildWeeklyForecast(),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildWeatherInfoRow(String title, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          title,
-          style: TextStyle(fontSize: 16, color: Colors.white),
-        ),
-        Text(
-          value,
-          style: TextStyle(fontSize: 16, color: Colors.white),
-        ),
-      ],
+  Widget _buildWeatherInfoRow(String title, String value, IconData iconData) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(iconData, color: Colors.white),
+              SizedBox(width: 10),
+              Text(
+                title,
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
+            ],
+          ),
+          Text(
+            value,
+            style: TextStyle(fontSize: 18, color: Colors.white),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildHourlyForecast() {
     return Container(
-      height: 120,
+      height: 100,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: hourlyForecast.length,
-        itemBuilder: (context, index) {
-          final forecast = hourlyForecast[index];
-          final time =
-              DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000);
-          final temp = forecast['temp'] as double;
-
-          return Card(
-            color: Colors.blue.shade100,
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                children: [
-                  Text('${time.hour}:${time.minute}'),
-                  Text('${temp.toStringAsFixed(1)}°'),
-                ],
-              ),
+        itemBuilder: (BuildContext context, int index) {
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8.0),
+            child: Column(
+              children: [
+                Text(
+                  DateFormat.jm().format(DateTime.fromMillisecondsSinceEpoch(
+                      hourlyForecast[index]['dt'] * 1000)),
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+                Icon(
+                  _getWeatherIcon(hourlyForecast[index]['weather'][0]['icon']),
+                  color: Colors.white,
+                ),
+                Text(
+                  '${hourlyForecast[index]['temp'].toStringAsFixed(1)}°',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ],
             ),
           );
         },
@@ -393,26 +565,30 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
   Widget _buildWeeklyForecast() {
     return Container(
-      height: 200,
+      height: 100,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: weeklyForecast.length,
-        itemBuilder: (context, index) {
-          final forecast = weeklyForecast[index];
-          final date =
-              DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000);
-          final temp = forecast['temp']['day'] as double;
-
-          return Card(
-            color: Colors.blue.shade100,
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                children: [
-                  Text('${date.day}/${date.month}'),
-                  Text('${temp.toStringAsFixed(1)}°'),
-                ],
-              ),
+        itemBuilder: (BuildContext context, int index) {
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8.0),
+            child: Column(
+              children: [
+                Text(
+                  DateFormat('E, MMM d').format(
+                      DateTime.fromMillisecondsSinceEpoch(
+                          weeklyForecast[index]['dt'] * 1000)),
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+                Icon(
+                  _getWeatherIcon(weeklyForecast[index]['weather'][0]['icon']),
+                  color: Colors.white,
+                ),
+                Text(
+                  '${weeklyForecast[index]['temp']['day'].toStringAsFixed(1)}°',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ],
             ),
           );
         },
@@ -423,19 +599,26 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
 class ThemeManager extends StatefulWidget {
   final Widget child;
+  final ThemeMode initialTheme;
 
-  ThemeManager({required this.child});
+  ThemeManager({required this.child, this.initialTheme = ThemeMode.light});
 
-  static ThemeManagerState of(BuildContext context) {
-    return context.findAncestorStateOfType<ThemeManagerState>()!;
+  static _ThemeManagerState of(BuildContext context) {
+    return context.findAncestorStateOfType<_ThemeManagerState>()!;
   }
 
   @override
-  ThemeManagerState createState() => ThemeManagerState();
+  _ThemeManagerState createState() => _ThemeManagerState();
 }
 
-class ThemeManagerState extends State<ThemeManager> {
-  ThemeMode _themeMode = ThemeMode.light;
+class _ThemeManagerState extends State<ThemeManager> {
+  late ThemeMode _themeMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _themeMode = widget.initialTheme;
+  }
 
   void toggleTheme() {
     setState(() {
@@ -446,11 +629,6 @@ class ThemeManagerState extends State<ThemeManager> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      themeMode: _themeMode,
-      theme: ThemeData.light(),
-      darkTheme: ThemeData.dark(),
-      home: widget.child,
-    );
+    return widget.child;
   }
 }
