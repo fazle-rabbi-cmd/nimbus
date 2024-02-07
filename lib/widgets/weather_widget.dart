@@ -103,8 +103,8 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                 children: [
                   Icon(Icons.my_location),
                   SizedBox(width: 8),
-                  Text(
-                      'Set current location'), // Include tooltip text in button label
+                  Text('Set current location'),
+                  // Include tooltip text in button label
                 ],
               ),
             ),
@@ -151,6 +151,50 @@ class _WeatherWidgetState extends State<WeatherWidget> {
     );
   }
 
+  double _parseAQI(Map<String, dynamic> weatherData) {
+    if (weatherData.containsKey('main') &&
+        weatherData['main'].containsKey('aqi')) {
+      dynamic aqiData = weatherData['main']['aqi'];
+      if (aqiData is int || aqiData is double) {
+        // Check if AQI is int or double
+        return aqiData.toDouble(); // Convert to double if necessary
+      }
+    }
+    return 0.0; // Default value if AQI data is not available
+  }
+
+  Future<double> fetchAQI(double lat, double lon, String apiKey) async {
+    final response = await http.get(Uri.parse(
+        'https://api.openweathermap.org/data/2.5/air_pollution?lat=$lat&lon=$lon&key=$apiKey'));
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      final Map<String, dynamic> current = data['data']['current'];
+      final double aqi = current['pollution']['aqius'];
+      return aqi.toDouble();
+    } else {
+      throw Exception('Failed to fetch AQI');
+    }
+  }
+
+  Future<void> _getAQI(double lat, double lon, String apiKey) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            'https://api.openweathermap.org/data/2.5/air_pollution?lat=$lat&lon=$lon&appid=$apiKey'),
+      );
+
+      if (response.statusCode == 200) {
+        final aqiData = json.decode(response.body);
+        setState(() {
+          aqi = aqiData['list'][0]['main']['aqi'].toDouble();
+        });
+      }
+    } catch (e) {
+      print('Error fetching AQI: $e');
+    }
+  }
+
   void _getWeatherForLocation(String cityName) async {
     try {
       final response = await http.get(
@@ -173,7 +217,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   .toDouble();
           sunriseTime = _formatTime(weatherData['sys']['sunrise']);
           sunsetTime = _formatTime(weatherData['sys']['sunset']);
-          aqi = _parseAQI(weatherData);
+          aqi = _parseAQI(weatherData); // Fetch AQI data
 
           // Get highest and lowest temperature of the day
           double tempMin = weatherData['main']['temp_min'] - 273.15;
@@ -184,21 +228,13 @@ class _WeatherWidgetState extends State<WeatherWidget> {
           // Clear the input field after successfully fetching weather data
           _locationController.clear();
         });
+        double lat = weatherData['coord']['lat'];
+        double lon = weatherData['coord']['lon'];
+        await _getAQI(lat, lon, apiKey); // Fetch AQI data
       }
     } catch (e) {
       print('Error fetching weather for location: $e');
     }
-  }
-
-  double _parseAQI(Map<String, dynamic> weatherData) {
-    if (weatherData.containsKey('main') &&
-        weatherData['main'].containsKey('aqi')) {
-      dynamic aqiData = weatherData['main']['aqi'];
-      if (aqiData is double) {
-        return aqiData;
-      }
-    }
-    return 0.0; // Default value if AQI data is not available
   }
 
   Future<void> _getLocationAndWeather() async {
@@ -240,6 +276,8 @@ class _WeatherWidgetState extends State<WeatherWidget> {
       await _getWeather(position.latitude, position.longitude);
       await _getHourlyForecast(position.latitude, position.longitude);
       await _getWeeklyForecast(position.latitude, position.longitude);
+      await _getAQI(
+          position.latitude, position.longitude, apiKey); // Fetch AQI data
     } catch (e) {
       print('Error fetching location/weather: $e');
       // Handle errors here, such as displaying an error message to the user
@@ -661,6 +699,11 @@ class _ThemeManagerState extends State<ThemeManager> {
 
   @override
   Widget build(BuildContext context) {
-    return widget.child;
+    return MaterialApp(
+      themeMode: _themeMode,
+      theme: ThemeData.light(),
+      darkTheme: ThemeData.dark(),
+      home: widget.child,
+    );
   }
 }
