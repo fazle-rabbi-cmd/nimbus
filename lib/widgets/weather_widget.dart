@@ -16,9 +16,11 @@ void main() {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: WeatherWidget(),
+    return ThemeManager(
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: WeatherWidget(),
+      ),
     );
   }
 }
@@ -40,7 +42,6 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   IconData weatherIcon = WeatherIcons.day_sunny;
   bool isCelsius = true;
   TextEditingController _locationController = TextEditingController();
-
   double aqi = 0.0; // Add AQI variable
   double humidity = 0.0;
   double realFeel = 0.0;
@@ -117,38 +118,6 @@ class _WeatherWidgetState extends State<WeatherWidget> {
         Navigator.of(context).pop(); // Close the WeatherWidget
       }
     });
-  }
-
-  void _showLocationSuggestions() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Select Location'),
-          content: TextField(
-            onChanged: (value) {
-              // Implement your logic to fetch location suggestions based on input
-            },
-            decoration: InputDecoration(labelText: 'Location'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close the dialog
-              },
-              child: Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                // Implement your logic to select the location and fetch weather data
-                Navigator.of(context).pop(); // Close the dialog
-              },
-              child: Text('Search'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   double _parseAQI(Map<String, dynamic> weatherData) {
@@ -329,12 +298,15 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
       if (response.statusCode == 200) {
         final forecastData = json.decode(response.body);
+        print(
+            'Hourly Forecast Data: $forecastData'); // Print response data for debugging
         setState(() {
           hourlyForecast = (forecastData['hourly'] as List<dynamic>)
               .take(24)
               .cast<Map<String, dynamic>>()
               .toList();
         });
+        print('Hourly Forecast: $hourlyForecast'); // Print parsed forecast data
       }
     } catch (e) {
       print('Error fetching hourly forecast: $e');
@@ -350,6 +322,8 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
       if (response.statusCode == 200) {
         final forecastData = json.decode(response.body);
+        print(
+            'Weekly Forecast Data: $forecastData'); // Print response data for debugging
         setState(() {
           weeklyForecast = (forecastData['daily'] as List<dynamic>)
               .skip(1)
@@ -357,6 +331,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
               .cast<Map<String, dynamic>>()
               .toList();
         });
+        print('Weekly Forecast: $weeklyForecast'); // Print parsed forecast data
       }
     } catch (e) {
       print('Error fetching weekly forecast: $e');
@@ -421,7 +396,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
         actions: [
           IconButton(
             onPressed: () {
-              ThemeManager.of(_scaffoldKey.currentContext!).toggleTheme();
+              ThemeManager.of(context).toggleTheme();
             },
             icon: Icon(Icons.lightbulb_outline),
           ),
@@ -602,28 +577,36 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   }
 
   Widget _buildHourlyForecast() {
-    return Container(
-      height: 100,
+    return SizedBox(
+      height: 120,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: hourlyForecast.length,
         itemBuilder: (BuildContext context, int index) {
+          final forecast = hourlyForecast[index];
+          final timestamp = forecast['dt'];
+          final temperature = (forecast['temp'] - 273.15).toStringAsFixed(1);
+          final iconCode = forecast['weather'][0]['icon'];
+          final weatherIcon = _getWeatherIcon(iconCode);
+          final time = _formatTime(timestamp);
           return Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: Column(
               children: [
                 Text(
-                  DateFormat.jm().format(DateTime.fromMillisecondsSinceEpoch(
-                      hourlyForecast[index]['dt'] * 1000)),
-                  style: TextStyle(fontSize: 16, color: Colors.white),
+                  time,
+                  style: TextStyle(color: Colors.white),
                 ),
+                SizedBox(height: 5),
                 Icon(
-                  _getWeatherIcon(hourlyForecast[index]['weather'][0]['icon']),
+                  weatherIcon,
+                  size: 40,
                   color: Colors.white,
                 ),
+                SizedBox(height: 5),
                 Text(
-                  '${hourlyForecast[index]['temp'].toStringAsFixed(1)}°',
-                  style: TextStyle(fontSize: 16, color: Colors.white),
+                  '$temperature°C',
+                  style: TextStyle(color: Colors.white),
                 ),
               ],
             ),
@@ -634,29 +617,39 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   }
 
   Widget _buildWeeklyForecast() {
-    return Container(
-      height: 100,
+    return SizedBox(
+      height: 120,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: weeklyForecast.length,
         itemBuilder: (BuildContext context, int index) {
+          final forecast = weeklyForecast[index];
+          final timestamp = forecast['dt'];
+          final minTemperature =
+              (forecast['temp']['min'] - 273.15).toStringAsFixed(1);
+          final maxTemperature =
+              (forecast['temp']['max'] - 273.15).toStringAsFixed(1);
+          final iconCode = forecast['weather'][0]['icon'];
+          final weatherIcon = _getWeatherIcon(iconCode);
+          final day = _formatDay(timestamp);
           return Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: Column(
               children: [
                 Text(
-                  DateFormat('E, MMM d').format(
-                      DateTime.fromMillisecondsSinceEpoch(
-                          weeklyForecast[index]['dt'] * 1000)),
-                  style: TextStyle(fontSize: 16, color: Colors.white),
+                  day,
+                  style: TextStyle(color: Colors.white),
                 ),
+                SizedBox(height: 5),
                 Icon(
-                  _getWeatherIcon(weeklyForecast[index]['weather'][0]['icon']),
+                  weatherIcon,
+                  size: 40,
                   color: Colors.white,
                 ),
+                SizedBox(height: 5),
                 Text(
-                  '${weeklyForecast[index]['temp']['day'].toStringAsFixed(1)}°',
-                  style: TextStyle(fontSize: 16, color: Colors.white),
+                  '$minTemperature - $maxTemperature°C',
+                  style: TextStyle(color: Colors.white),
                 ),
               ],
             ),
@@ -664,6 +657,11 @@ class _WeatherWidgetState extends State<WeatherWidget> {
         },
       ),
     );
+  }
+
+  String _formatDay(int timestamp) {
+    DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+    return DateFormat.E().format(dateTime);
   }
 }
 
@@ -682,7 +680,9 @@ class ThemeManager extends StatefulWidget {
 }
 
 class _ThemeManagerState extends State<ThemeManager> {
-  late ThemeMode _themeMode;
+  ThemeMode _themeMode = ThemeMode.dark; // Initialize with a default value
+  // late ThemeMode _themeMode;
+  // ThemeMode? _themeMode;
 
   @override
   void initState() {
@@ -699,8 +699,12 @@ class _ThemeManagerState extends State<ThemeManager> {
 
   @override
   Widget build(BuildContext context) {
+    if (_themeMode == null) {
+      return Container(); // or return a loading indicator
+    }
+
     return MaterialApp(
-      themeMode: _themeMode,
+      themeMode: _themeMode!,
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
       home: widget.child,
