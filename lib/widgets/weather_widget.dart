@@ -355,6 +355,79 @@ class _WeatherWidgetState extends State<WeatherWidget>
     }
   }
 
+  // Add a method to show the feedback dialog
+  void _showFeedbackDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Feedback'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                decoration: InputDecoration(labelText: 'Feedback'),
+                maxLines: 3, // Adjust according to your design
+              ),
+              TextField(
+                decoration: InputDecoration(labelText: 'Email (Optional)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close the dialog
+              },
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Process feedback here (send to server, etc.)
+                _sendFeedback(
+                    'Your feedback message here'); // Implement this method
+                Navigator.pop(context); // Close the dialog
+              },
+              child: Text('Submit'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Add a method to send feedback to a backend server
+  void _sendFeedback(String feedback) async {
+    try {
+      // Define the endpoint URL where you want to send the feedback
+      String feedbackUrl = 'https://your-backend-url.com/api/feedback';
+
+      // Define the feedback data to be sent in the request body
+      Map<String, dynamic> feedbackData = {
+        'feedback': feedback,
+        // You can include additional fields such as user ID, device information, etc.
+      };
+
+      // Make a POST request to the backend server
+      final response = await http.post(
+        Uri.parse(feedbackUrl),
+        body: feedbackData,
+      );
+
+      // Check if the request was successful (status code 200)
+      if (response.statusCode == 200) {
+        // Feedback sent successfully
+        print('Feedback sent successfully');
+      } else {
+        // Handle the case where the request was not successful
+        print('Failed to send feedback. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      // Handle any errors that occur during the HTTP request
+      print('Error sending feedback: $e');
+    }
+  }
+
   IconData _getWeatherIcon(String iconCode) {
     switch (iconCode) {
       case '01d':
@@ -424,6 +497,12 @@ class _WeatherWidgetState extends State<WeatherWidget>
           IconButton(
             onPressed: _showCropSuggestion,
             icon: Icon(Icons.agriculture),
+          ),
+          IconButton(
+            onPressed: () {
+              _showFeedbackDialog(context);
+            },
+            icon: Icon(Icons.feedback),
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
