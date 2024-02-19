@@ -61,6 +61,9 @@ class _WeatherWidgetState extends State<WeatherWidget>
   late AnimationController _controller;
   late Animation<double> _animation;
 
+  // Focus node for keyboard navigation
+  FocusNode _focusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -73,12 +76,28 @@ class _WeatherWidgetState extends State<WeatherWidget>
       curve: Curves.easeInOut,
     );
     _getLocationAndWeather();
+    // Add listener for focus node
+    _focusNode.addListener(_onFocusChange);
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    // Dispose the focus node
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
     super.dispose();
+  }
+
+  // Method to handle focus change
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      // Handle focus gained
+      print('TextField focused');
+    } else {
+      // Handle focus lost
+      print('TextField unfocused');
+    }
   }
 
   void _showLocationPicker() {
@@ -89,6 +108,7 @@ class _WeatherWidgetState extends State<WeatherWidget>
           title: Text('Enter Location'),
           content: TextField(
             controller: _locationController,
+            focusNode: _focusNode, // Attach focus node for keyboard navigation
             decoration: InputDecoration(labelText: 'Location'),
           ),
           actions: [
@@ -228,27 +248,67 @@ class _WeatherWidgetState extends State<WeatherWidget>
       bool serviceEnabled;
       LocationPermission permission;
 
+      // Check if location services are enabled
       serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        // Location services are not enabled, show a dialog to enable location services
-        // Implement your logic to show a dialog or request the user to enable location services
+        // Show a dialog to enable location services
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Location Services Disabled'),
+              content: Text('Please enable location services to use this app.'),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close the dialog
+                  },
+                  child: Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
         return;
       }
 
+      // Check location permission status
       permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.deniedForever) {
-        // Location permissions are permanently denied, take the user to app settings
-        // Implement your logic to navigate the user to app settings
+        // Navigate the user to app settings to enable location permissions
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Location Permissions Required'),
+              content:
+                  Text('Please enable location permissions in app settings.'),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close the dialog
+                  },
+                  child: Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
         return;
       }
 
       if (permission == LocationPermission.denied) {
-        // Location permissions are denied, ask for permissions
+        // Request location permissions
         permission = await Geolocator.requestPermission();
         if (permission != LocationPermission.whileInUse &&
             permission != LocationPermission.always) {
-          // Permissions are denied, show a message to the user or handle as needed
-          // Implement your logic to inform the user about the necessity of location permissions
+          // Show a message informing the user about the necessity of location permissions
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Location permissions are required to fetch weather data.'),
+            ),
+          );
           return;
         }
       }
@@ -267,6 +327,12 @@ class _WeatherWidgetState extends State<WeatherWidget>
     } catch (e) {
       print('Error fetching location/weather: $e');
       // Handle errors here, such as displaying an error message to the user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Failed to fetch location/weather data. Please try again later.'),
+        ),
+      );
     }
   }
 
