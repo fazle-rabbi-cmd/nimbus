@@ -30,7 +30,8 @@ class WeatherWidget extends StatefulWidget {
   _WeatherWidgetState createState() => _WeatherWidgetState();
 }
 
-class _WeatherWidgetState extends State<WeatherWidget> {
+class _WeatherWidgetState extends State<WeatherWidget>
+    with SingleTickerProviderStateMixin {
   String apiKey = 'c0d1009550c934bb96a545c2d2f38878';
   String baseUrl = 'https://api.openweathermap.org/data/2.5/weather';
   String forecastUrl = 'https://api.openweathermap.org/data/2.5/onecall';
@@ -57,10 +58,27 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 500),
+    );
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    );
     _getLocationAndWeather();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   void _showLocationPicker() {
@@ -105,7 +123,6 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   Icon(Icons.my_location),
                   SizedBox(width: 8),
                   Text('Set current location'),
-                  // Include tooltip text in button label
                 ],
               ),
             ),
@@ -586,27 +603,28 @@ class _WeatherWidgetState extends State<WeatherWidget> {
           final forecast = hourlyForecast[index];
           final timestamp = forecast['dt'];
           final temperature = (forecast['temp'] - 273.15).toStringAsFixed(1);
-          final iconCode = forecast['weather'][0]['icon'];
-          final weatherIcon = _getWeatherIcon(iconCode);
-          final time = _formatTime(timestamp);
+          final weatherIcon = _getWeatherIcon(forecast['weather'][0]['icon']);
+          final hour = DateFormat('h a')
+              .format(DateTime.fromMillisecondsSinceEpoch(timestamp * 1000));
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  time,
-                  style: TextStyle(color: Colors.white),
+                  hour,
+                  style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
                 SizedBox(height: 5),
                 Icon(
                   weatherIcon,
-                  size: 40,
+                  size: 30,
                   color: Colors.white,
                 ),
                 SizedBox(height: 5),
                 Text(
-                  '$temperature°C',
-                  style: TextStyle(color: Colors.white),
+                  '${temperature}°C',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
               ],
             ),
@@ -617,59 +635,51 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   }
 
   Widget _buildWeeklyForecast() {
-    return SizedBox(
-      height: 120,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: weeklyForecast.length,
-        itemBuilder: (BuildContext context, int index) {
-          final forecast = weeklyForecast[index];
-          final timestamp = forecast['dt'];
-          final minTemperature =
-              (forecast['temp']['min'] - 273.15).toStringAsFixed(1);
-          final maxTemperature =
-              (forecast['temp']['max'] - 273.15).toStringAsFixed(1);
-          final iconCode = forecast['weather'][0]['icon'];
-          final weatherIcon = _getWeatherIcon(iconCode);
-          final day = _formatDay(timestamp);
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Column(
-              children: [
-                Text(
-                  day,
-                  style: TextStyle(color: Colors.white),
-                ),
-                SizedBox(height: 5),
-                Icon(
-                  weatherIcon,
-                  size: 40,
-                  color: Colors.white,
-                ),
-                SizedBox(height: 5),
-                Text(
-                  '$minTemperature - $maxTemperature°C',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+    return Column(
+      children: weeklyForecast.map((forecast) {
+        final timestamp = forecast['dt'];
+        final maxTemperature =
+            (forecast['temp']['max'] - 273.15).toStringAsFixed(1);
+        final minTemperature =
+            (forecast['temp']['min'] - 273.15).toStringAsFixed(1);
+        final weatherIcon = _getWeatherIcon(forecast['weather'][0]['icon']);
+        final day = DateFormat('EEEE')
+            .format(DateTime.fromMillisecondsSinceEpoch(timestamp * 1000));
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                day,
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
+              Row(
+                children: [
+                  Icon(
+                    weatherIcon,
+                    size: 30,
+                    color: Colors.white,
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    '${maxTemperature}°C / ${minTemperature}°C',
+                    style: TextStyle(fontSize: 16, color: Colors.white),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
-  }
-
-  String _formatDay(int timestamp) {
-    DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-    return DateFormat.E().format(dateTime);
   }
 }
 
 class ThemeManager extends StatefulWidget {
   final Widget child;
-  final ThemeMode initialTheme;
 
-  ThemeManager({required this.child, this.initialTheme = ThemeMode.light});
+  const ThemeManager({Key? key, required this.child}) : super(key: key);
 
   static _ThemeManagerState of(BuildContext context) {
     return context.findAncestorStateOfType<_ThemeManagerState>()!;
@@ -680,34 +690,117 @@ class ThemeManager extends StatefulWidget {
 }
 
 class _ThemeManagerState extends State<ThemeManager> {
-  ThemeMode _themeMode = ThemeMode.dark; // Initialize with a default value
-  // late ThemeMode _themeMode;
-  // ThemeMode? _themeMode;
-
-  @override
-  void initState() {
-    super.initState();
-    _themeMode = widget.initialTheme;
-  }
+  bool _isDarkMode = false;
 
   void toggleTheme() {
     setState(() {
-      _themeMode =
-          _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+      _isDarkMode = !_isDarkMode;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_themeMode == null) {
-      return Container(); // or return a loading indicator
-    }
+    return _ThemeManagerInherited(
+      isDarkMode: _isDarkMode,
+      toggleTheme: toggleTheme,
+      child: widget.child,
+    );
+  }
+}
 
-    return MaterialApp(
-      themeMode: _themeMode!,
-      theme: ThemeData.light(),
-      darkTheme: ThemeData.dark(),
-      home: widget.child,
+class _ThemeManagerInherited extends InheritedWidget {
+  final bool isDarkMode;
+  final VoidCallback toggleTheme;
+
+  const _ThemeManagerInherited({
+    required this.isDarkMode,
+    required this.toggleTheme,
+    required Widget child,
+    Key? key,
+  }) : super(key: key, child: child);
+
+  static _ThemeManagerInherited of(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<_ThemeManagerInherited>()!;
+  }
+
+  @override
+  bool updateShouldNotify(_ThemeManagerInherited oldWidget) {
+    return isDarkMode != oldWidget.isDarkMode;
+  }
+}
+
+class CropSuggestionPage extends StatelessWidget {
+  final double temperature;
+  final double humidity;
+  final double chanceOfRain;
+
+  const CropSuggestionPage({
+    Key? key,
+    required this.temperature,
+    required this.humidity,
+    required this.chanceOfRain,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Crop Suggestions'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Based on the current weather conditions:',
+              style: TextStyle(fontSize: 18),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 20),
+            _buildSuggestionCard(
+              context,
+              'Wheat',
+              'Best suited for the current conditions.',
+            ),
+            _buildSuggestionCard(
+              context,
+              'Rice',
+              'Requires high humidity and moderate temperatures.',
+            ),
+            _buildSuggestionCard(
+              context,
+              'Corn',
+              'Requires high temperatures and moderate humidity.',
+            ),
+            // Add more crop suggestions as needed
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestionCard(
+      BuildContext context, String crop, String details) {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Text(
+              crop,
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(
+              details,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

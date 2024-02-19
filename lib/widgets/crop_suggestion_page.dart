@@ -40,7 +40,7 @@ class CropSuggestionPage extends StatelessWidget {
   final double humidity;
   final double chanceOfRain;
 
-  CropSuggestionPage({
+  const CropSuggestionPage({super.key, 
     required this.temperature,
     required this.humidity,
     required this.chanceOfRain,
@@ -50,14 +50,14 @@ class CropSuggestionPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Crop Suggestions'),
+        title: const Text('Crop Suggestions'),
       ),
       body: FutureBuilder<List<CropSuggestion>>(
         future: CropSuggestionService.fetchCropSuggestions(
             temperature, humidity, chanceOfRain),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
           } else {
