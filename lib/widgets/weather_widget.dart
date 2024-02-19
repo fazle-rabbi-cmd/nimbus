@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:geolocator/geolocator.dart';
 import 'package:weather_icons/weather_icons.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'crop_suggestion_page.dart'; // Import the CropSuggestionPage
 
@@ -201,7 +202,7 @@ class _WeatherWidgetState extends State<WeatherWidget>
     }
   }
 
-  void _getWeatherForLocation(String cityName) async {
+  Future<void> _getWeatherForLocation(String cityName) async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl?q=$cityName&appid=$apiKey'),
@@ -210,11 +211,11 @@ class _WeatherWidgetState extends State<WeatherWidget>
       if (response.statusCode == 200) {
         final weatherData = json.decode(response.body);
         setState(() {
+          // Update weather data
           location = weatherData['name'];
           temperature = (weatherData['main']['temp'] - 273.15);
           description = weatherData['weather'][0]['description'];
           weatherIcon = _getWeatherIcon(weatherData['weather'][0]['icon']);
-
           humidity = weatherData['main']['humidity'].toDouble();
           realFeel = (weatherData['main']['feels_like'] - 273.15);
           pressure = weatherData['main']['pressure'].toDouble();
@@ -223,107 +224,146 @@ class _WeatherWidgetState extends State<WeatherWidget>
                   .toDouble();
           sunriseTime = _formatTime(weatherData['sys']['sunrise']);
           sunsetTime = _formatTime(weatherData['sys']['sunset']);
-          aqi = _parseAQI(weatherData); // Fetch AQI data
+          aqi = _parseAQI(weatherData);
 
           // Get highest and lowest temperature of the day
           double tempMin = weatherData['main']['temp_min'] - 273.15;
           double tempMax = weatherData['main']['temp_max'] - 273.15;
           minTemperature = tempMin;
           maxTemperature = tempMax;
-
-          // Clear the input field after successfully fetching weather data
-          _locationController.clear();
         });
-        double lat = weatherData['coord']['lat'];
-        double lon = weatherData['coord']['lon'];
-        await _getAQI(lat, lon, apiKey); // Fetch AQI data
+
+        // Cache weather data
+        await _cacheWeatherData(weatherData);
       }
     } catch (e) {
       print('Error fetching weather for location: $e');
     }
   }
 
+  Future<void> _cacheWeatherData(Map<String, dynamic> weatherData) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('cached_weather_data', json.encode(weatherData));
+  }
+
   Future<void> _getLocationAndWeather() async {
     try {
-      bool serviceEnabled;
-      LocationPermission permission;
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? cachedWeatherData = prefs.getString('cached_weather_data');
 
-      // Check if location services are enabled
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        // Show a dialog to enable location services
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Location Services Disabled'),
-              content: Text('Please enable location services to use this app.'),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close the dialog
-                  },
-                  child: Text('OK'),
-                ),
-              ],
-            );
-          },
-        );
-        return;
-      }
+      if (cachedWeatherData != null) {
+        // If cached weather data exists, use it
+        final weatherData = json.decode(cachedWeatherData);
+        setState(() {
+          // Update weather data
+          location = weatherData['name'];
+          temperature = (weatherData['main']['temp'] - 273.15);
+          description = weatherData['weather'][0]['description'];
+          weatherIcon = _getWeatherIcon(weatherData['weather'][0]['icon']);
+          humidity = weatherData['main']['humidity'].toDouble();
+          realFeel = (weatherData['main']['feels_like'] - 273.15);
+          pressure = weatherData['main']['pressure'].toDouble();
+          chanceOfRain =
+              (weatherData.containsKey('rain') ? weatherData['rain']['1h'] : 0)
+                  .toDouble();
+          sunriseTime = _formatTime(weatherData['sys']['sunrise']);
+          sunsetTime = _formatTime(weatherData['sys']['sunset']);
+          aqi = _parseAQI(weatherData);
 
-      // Check location permission status
-      permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.deniedForever) {
-        // Navigate the user to app settings to enable location permissions
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Location Permissions Required'),
-              content:
-                  Text('Please enable location permissions in app settings.'),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close the dialog
-                  },
-                  child: Text('OK'),
-                ),
-              ],
-            );
-          },
-        );
-        return;
-      }
+          // Get highest and lowest temperature of the day
+          double tempMin = weatherData['main']['temp_min'] - 273.15;
+          double tempMax = weatherData['main']['temp_max'] - 273.15;
+          minTemperature = tempMin;
+          maxTemperature = tempMax;
+        });
 
-      if (permission == LocationPermission.denied) {
-        // Request location permissions
-        permission = await Geolocator.requestPermission();
-        if (permission != LocationPermission.whileInUse &&
-            permission != LocationPermission.always) {
-          // Show a message informing the user about the necessity of location permissions
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  'Location permissions are required to fetch weather data.'),
-            ),
+        // Fetch AQI data (assuming it's not cached)
+        await _getAQI(
+            weatherData['coord']['lat'], weatherData['coord']['lon'], apiKey);
+      } else {
+        // If no cached data exists, fetch weather data from API
+        bool serviceEnabled;
+        LocationPermission permission;
+        // Rest of the method remains the same
+        // ...
+        // Check if location services are enabled
+        serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          // Show a dialog to enable location services
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: Text('Location Services Disabled'),
+                content:
+                    Text('Please enable location services to use this app.'),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(); // Close the dialog
+                    },
+                    child: Text('OK'),
+                  ),
+                ],
+              );
+            },
           );
           return;
         }
+
+        // Check location permission status
+        permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.deniedForever) {
+          // Navigate the user to app settings to enable location permissions
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: Text('Location Permissions Required'),
+                content:
+                    Text('Please enable location permissions in app settings.'),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(); // Close the dialog
+                    },
+                    child: Text('OK'),
+                  ),
+                ],
+              );
+            },
+          );
+          return;
+        }
+
+        if (permission == LocationPermission.denied) {
+          // Request location permissions
+          permission = await Geolocator.requestPermission();
+          if (permission != LocationPermission.whileInUse &&
+              permission != LocationPermission.always) {
+            // Show a message informing the user about the necessity of location permissions
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Location permissions are required to fetch weather data.'),
+              ),
+            );
+            return;
+          }
+        }
+
+        // Fetch current location
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.low,
+        );
+
+        // Fetch weather using the obtained location
+        await _getWeather(position.latitude, position.longitude);
+        await _getHourlyForecast(position.latitude, position.longitude);
+        await _getWeeklyForecast(position.latitude, position.longitude);
+        await _getAQI(
+            position.latitude, position.longitude, apiKey); // Fetch AQI data
       }
-
-      // Fetch current location
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
-      );
-
-      // Fetch weather using the obtained location
-      await _getWeather(position.latitude, position.longitude);
-      await _getHourlyForecast(position.latitude, position.longitude);
-      await _getWeeklyForecast(position.latitude, position.longitude);
-      await _getAQI(
-          position.latitude, position.longitude, apiKey); // Fetch AQI data
     } catch (e) {
       print('Error fetching location/weather: $e');
       // Handle errors here, such as displaying an error message to the user

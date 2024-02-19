@@ -39,7 +39,7 @@ dependencies:
   app_settings: ^4.0.0
   url_launcher: ^6.0.9
   flutter_keyboard_visibility: ^5.0.0
-  shared_preferences: ^2.0.0
+  shared_preferences: ^2.0.6
   permission_handler: ^10.2.0
   flutter_google_places: ^0.3.0
   flutter_typeahead: ^4.0.0
